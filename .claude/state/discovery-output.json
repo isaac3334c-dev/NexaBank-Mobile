@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-10-29T01:30:00-05:00",
+  "skip_rationale": "Not a skip -- real discovery pass for a genuine new visual direction (user explicitly asked for 'más cyberpunk' onboarding), done after two prior turns of improvising tokens from memory instead of reading real sources (user caught both). Project: NexaBank-Mobile (/home/danidev/Documentos/Dev/NexaBank/NexaBank-Mobile), scope: Splash + Phone screens only (user explicitly excluded OTP/Register/Pin from this pass).",
+  "referent": {
+    "url": "https://designmd.app/library/cyberpunk-neon-noir + https://colorsift.com/articles/neon-ui-design-2026-reinvented-glow",
+    "take": "Layered glow technique (stacked box-shadow/text-shadow at increasing blur radius, RN equivalent: textShadowColor/Offset/Radius for text, stacked semi-transparent Views for shapes). Motion: spring-based entrances (stiffness~120/damping~20 feel), fade+translateY(16px->0) over ~540ms ease-out with ~120ms stagger between elements, hover/press = scale(1.03) + shadow lift over 200ms. Scanline/grid-line as a SUBTLE atmosphere layer, not a dominant motif. Typography principle: 'glows but doesn't shout -- signage seen through condensation', i.e. soft diffuse glow, not sharp/loud. 2026 fintech-specific finding: a SINGLE calibrated neon accent (not multi-color) that pulses/breathes (lights up on event, fades back to muted dark) at 10-15% surface coverage max -- this is the restraint principle that keeps it 'neo-fintech premium' rather than full HUD.",
+    "leave": "Orbitron display font (breaks the already-committed Geist brand font). Multi-neon palette (cyan/magenta/purple from the Neon Noir reference) -- user chose 'neo-fintech premium con acentos cyberpunk' over 'cyberpunk denso/HUD', so NexaBank's existing single-lime-accent identity stays the only neon color, not a rainbow. Dense/constant glitch effects, CRT-scanline-as-dominant-texture, angular clip-path panel shapes, hexagonal grid overlays, holographic wireframe iconography -- all explicitly 'cyberpunk denso' territory the user did not pick."
+  },
+  "style": { "id": 13, "name": "Obsidiana y Lima + neon-noir accents (restrained, single-accent glow/motion layer on top of the existing brand, not a style replacement)" },
+  "states": [
+    {
+      "component": "SplashScreen (src/app/index.tsx)",
+      "empty": "N/A -- always plays on cold start",
+      "loading": "N/A -- the animation IS the loading state",
+      "error": "N/A -- no failure mode, purely presentational",
+      "success": "Particle converge (existing) + NEW: layered glow pulse on the drawn N stroke, brief glitch-flicker on wordmark entrance (~150ms double-exposure jitter), 2-3 faint scanlines slowly drifting downward across the glow field during resolve/exit phases"
+    },
+    {
+      "component": "PhoneScreen (src/app/auth/phone.tsx)",
+      "empty": "Phone input empty, Continuar disabled -- NEW: stagger-fade-in of header/form on mount (540ms ease-out, 120ms stagger), 2-3 faint static scanlines over the background glow",
+      "loading": "Button shows spinner while phone/start in flight (unchanged)",
+      "error": "Inline error text (unchanged)",
+      "success": "Navigates to OTP -- NEW: input border glow pulses (not just solid color change) on focus; primary button gets a soft glow halo behind it, slightly brighter on press"
+    }
+  ],
+  "tokens": {
+    "colors": ["#0A0B0D", "#141619", "#2A2E35", "#F2F0EA", "#C6F432"],
+    "typography": { "heading": "Geist Bold (unchanged -- Orbitron explicitly rejected, see referent.leave)", "body": "Geist Regular (unchanged)" },
+    "spacing": [4, 8, 16, 20, 24, 32, 40, 48],
+    "motion": { "entrance": "fade + translateY(16->0), 540ms ease-out, 120ms stagger", "press": "scale(0.97), glow flash", "glow_pulse": "opacity oscillation ~1.6s loop, breathing not strobing" }
+  },
+  "valid_for_minutes": 180
+}
