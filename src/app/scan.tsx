@@ -1,21 +1,14 @@
-// Scan screen — QR payment flow via manual data entry (no real camera).
-//
-// Decision: NOT adding expo-camera in this pass. `npx expo-camera`'s
-// CameraView/useCameraPermissions/onBarcodeScanned API (confirmed against
-// https://docs.expo.dev/versions/v58.0.0/sdk/camera/, the exact SDK 58 docs,
-// not assumed from memory) is in fact available in Expo Go for this SDK, so
-// technically a real scanner wasn't blocked by a dev-build requirement here.
-// The reason to defer it anyway is scope/time: wiring a live camera preview,
-// permission UX, torch/facing controls, and safely tearing down the camera
-// session on screen blur is a separate chunk of work from the actual
-// business flow (decode -> confirm merchant -> PIN -> pay) this task is
-// about. The manual fallback below exercises that exact same business flow
-// end-to-end, so swapping in `CameraView` later only means replacing the
-// `qrData` TextField with a scanner that fills the same state variable —
-// the decode/pay logic does not change.
+// Scan screen — QR payment flow, now via the real camera (`expo-camera`'s
+// CameraView/useCameraPermissions/onBarcodeScanned, confirmed available in
+// Expo Go for SDK 58). As predicted in the previous version of this comment,
+// swapping in the scanner only replaced how `qrData` gets filled — the
+// decode -> confirm merchant -> PIN -> pay business logic below is
+// unchanged. A manual-entry fallback (`TextField`) stays for when camera
+// permission is denied, so the flow never fully blocks a user.
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 
 import { AppHeader } from '@/components/ui/app-header';
@@ -54,6 +47,12 @@ function toAmountString(raw: string): string | null {
 export default function ScanScreen() {
   const fetchWallet = useWalletStore((s) => s.fetchWallet);
 
+  const [permission, requestPermission] = useCameraPermissions();
+  const [manualEntry, setManualEntry] = useState(false);
+  // Guards against onBarcodeScanned firing repeatedly for the same frame
+  // while the decode request for the first scan is still in flight.
+  const [scanLocked, setScanLocked] = useState(false);
+
   const [qrData, setQrData] = useState('');
   const [amount, setAmount] = useState('');
   const [decoding, setDecoding] = useState(false);
@@ -65,23 +64,35 @@ export default function ScanScreen() {
   const [payError, setPayError] = useState<string | null>(null);
   const [result, setResult] = useState<QrPayResponse | null>(null);
 
-  async function handleDecode() {
+  async function decodeData(data: string) {
     setDecodeError(null);
     setDecoded(null);
     setResult(null);
-    if (!qrData.trim()) {
+    if (!data.trim()) {
       setDecodeError('Pega o escribe el contenido del código QR.');
       return;
     }
     setDecoding(true);
     try {
-      const response = await apiFetch<QrDecodeResponse>(`/qr/decode?data=${encodeURIComponent(qrData.trim())}`);
+      const response = await apiFetch<QrDecodeResponse>(`/qr/decode?data=${encodeURIComponent(data.trim())}`);
       setDecoded(response);
     } catch (err) {
       setDecodeError(getErrorMessage(err));
     } finally {
       setDecoding(false);
     }
+  }
+
+  function handleDecode() {
+    return decodeData(qrData);
+  }
+
+  async function handleBarcodeScanned({ data }: { data: string }) {
+    if (scanLocked) return;
+    setScanLocked(true);
+    setQrData(data);
+    await decodeData(data);
+    setScanLocked(false);
   }
 
   function handlePayPress() {
@@ -126,73 +137,116 @@ export default function ScanScreen() {
     setDecodeError(null);
     setResult(null);
     setPayError(null);
+    setManualEntry(false);
+    setScanLocked(false);
   }
+
+  const showScannerUi = !result && !decoded && !manualEntry;
 
   return (
     <View style={styles.container}>
       <AppHeader title="Escanear QR" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.content}>
-        {result ? (
-          <View style={styles.resultCard}>
-            <Text style={styles.resultTitle}>¡Pago realizado!</Text>
-            {result.merchant && <Text style={styles.resultLine}>Comercio: {result.merchant}</Text>}
-            {result.amount && <Text style={styles.resultLine}>Monto: {result.amount}</Text>}
-            {result.newBalance !== undefined && (
-              <Text style={styles.resultLine}>Nuevo saldo: {result.newBalance}</Text>
-            )}
-            <Button variant="secondary" fullWidth onPress={handleReset} style={styles.resultButton}>
-              Hacer otro pago
-            </Button>
-          </View>
-        ) : (
-          <>
-            <TextField
-              label="Contenido del QR"
-              placeholder="nexabank:pay:ACC-123456:MerchantName"
-              value={qrData}
-              onChangeText={(text) => {
-                setQrData(text);
-                setDecoded(null);
-                setDecodeError(null);
-              }}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+      {showScannerUi ? (
+        <View style={styles.cameraSection}>
+          {!permission ? null : !permission.granted ? (
+            <View style={styles.permissionCard}>
+              <Text style={styles.permissionText}>
+                NexaBank necesita acceso a la cámara para escanear códigos QR de pago.
+              </Text>
+              <Button variant="primary" fullWidth onPress={requestPermission}>
+                Permitir cámara
+              </Button>
+              <Text style={styles.manualLink} onPress={() => setManualEntry(true)}>
+                Ingresar código manualmente
+              </Text>
+            </View>
+          ) : (
+            <>
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                onBarcodeScanned={scanLocked ? undefined : handleBarcodeScanned}
+              />
+              <View style={styles.scanFrame} pointerEvents="none" />
+              {decoding && <Text style={styles.scanHint}>Verificando código…</Text>}
+              {decodeError && <Text style={[styles.error, styles.scanError]}>{decodeError}</Text>}
+              <Text style={styles.manualLink} onPress={() => setManualEntry(true)}>
+                Ingresar código manualmente
+              </Text>
+            </>
+          )}
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content}>
+          {result ? (
+            <View style={styles.resultCard}>
+              <Text style={styles.resultTitle}>¡Pago realizado!</Text>
+              {result.merchant && <Text style={styles.resultLine}>Comercio: {result.merchant}</Text>}
+              {result.amount && <Text style={styles.resultLine}>Monto: {result.amount}</Text>}
+              {result.newBalance !== undefined && (
+                <Text style={styles.resultLine}>Nuevo saldo: {result.newBalance}</Text>
+              )}
+              <Button variant="secondary" fullWidth onPress={handleReset} style={styles.resultButton}>
+                Hacer otro pago
+              </Button>
+            </View>
+          ) : (
+            <>
+              {manualEntry && !decoded && (
+                <Text style={styles.manualLink} onPress={() => setManualEntry(false)}>
+                  Usar la cámara
+                </Text>
+              )}
 
-            <Button variant="secondary" fullWidth loading={decoding} onPress={handleDecode}>
-              Verificar código
-            </Button>
+              <TextField
+                label="Contenido del QR"
+                placeholder="nexabank:pay:ACC-123456:MerchantName"
+                value={qrData}
+                onChangeText={(text) => {
+                  setQrData(text);
+                  setDecoded(null);
+                  setDecodeError(null);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
 
-            {decodeError && <Text style={styles.error}>{decodeError}</Text>}
+              <Button variant="secondary" fullWidth loading={decoding} onPress={handleDecode}>
+                Verificar código
+              </Button>
 
-            {decoded && (
-              <View style={styles.merchantCard}>
-                <Text style={styles.merchantLabel}>DESTINO</Text>
-                <Text style={styles.merchantName}>{decoded.merchant}</Text>
-                <Text style={styles.merchantAccount}>{decoded.accountId}</Text>
-              </View>
-            )}
+              {decodeError && <Text style={styles.error}>{decodeError}</Text>}
 
-            {decoded && (
-              <>
-                <TextField
-                  label="Monto a pagar"
-                  placeholder="0.00"
-                  keyboardType="decimal-pad"
-                  value={amount}
-                  onChangeText={setAmount}
-                />
+              {decoded && (
+                <View style={styles.merchantCard}>
+                  <Text style={styles.merchantLabel}>DESTINO</Text>
+                  <Text style={styles.merchantName}>{decoded.merchant}</Text>
+                  <Text style={styles.merchantAccount}>{decoded.accountId}</Text>
+                </View>
+              )}
 
-                {payError && <Text style={styles.error}>{payError}</Text>}
+              {decoded && (
+                <>
+                  <TextField
+                    label="Monto a pagar"
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    value={amount}
+                    onChangeText={setAmount}
+                  />
 
-                <Button variant="primary" fullWidth loading={paying} onPress={handlePayPress}>
-                  Pagar
-                </Button>
-              </>
-            )}
-          </>
-        )}
-      </ScrollView>
+                  {payError && <Text style={styles.error}>{payError}</Text>}
+
+                  <Button variant="primary" fullWidth loading={paying} onPress={handlePayPress}>
+                    Pagar
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+        </ScrollView>
+      )}
       <TabBar />
 
       <PinConfirmSheet visible={pinVisible} onConfirm={handlePinConfirm} onCancel={() => setPinVisible(false)} />
@@ -214,6 +268,52 @@ const styles = StyleSheet.create({
   error: {
     ...Typography.caption,
     color: colors.danger,
+  },
+  cameraSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[4],
+    paddingHorizontal: PageInset.horizontal,
+    paddingBottom: Spacing[8],
+  },
+  camera: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: Radius.card,
+    overflow: 'hidden',
+  },
+  scanFrame: {
+    position: 'absolute',
+    top: '18%',
+    left: '18%',
+    right: '18%',
+    bottom: '32%',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderRadius: Radius.md,
+  },
+  scanHint: {
+    ...Typography.caption,
+    color: colors.textSecondary,
+  },
+  scanError: {
+    textAlign: 'center',
+  },
+  manualLink: {
+    ...Typography.caption,
+    fontFamily: Typography.bodyStrong.fontFamily,
+    color: colors.primary,
+  },
+  permissionCard: {
+    width: '100%',
+    gap: Spacing[4],
+    alignItems: 'center',
+  },
+  permissionText: {
+    ...Typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   merchantCard: {
     borderRadius: Radius.card,

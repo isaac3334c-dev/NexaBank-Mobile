@@ -32,6 +32,12 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NexaBank necesita acceso a la cámara para escanear códigos QR de pago."
+        }
       ]
     ],
     "experiments": {
