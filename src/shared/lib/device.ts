@@ -14,7 +14,7 @@ const DEVICE_ID_KEY = "nexabank:deviceId";
  * label for `pin/setup` / `pin/verify` (not for anything cryptographic), a
  * Math.random()-based UUID is an acceptable, dependency-free substitute.
  */
-function generateUuidV4(): string {
+export function generateUuidV4(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;

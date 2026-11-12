@@ -57,3 +57,24 @@ export async function apiFetch<T>(
 
   return response.json() as Promise<T>;
 }
+
+const ERROR_MESSAGES: Record<string, string> = {
+  INVALID_OTP: 'Código incorrecto o expirado. Inténtalo de nuevo.',
+  PIN_LOCKED: 'PIN bloqueado por demasiados intentos. Espera unos minutos.',
+  INSUFFICIENT_FUNDS: 'Saldo insuficiente para esta operación.',
+  INVALID_CONFIRMATION_TOKEN: 'No pudimos confirmar tu PIN. Inténtalo de nuevo.',
+  DUPLICATE_USER: 'Ya existe una cuenta con ese número de teléfono.',
+  VALIDATION_FAILED: 'Revisa los datos ingresados.',
+  RESOURCE_NOT_FOUND: 'No encontramos lo que buscabas.',
+  UNAUTHORIZED: 'Tu sesión expiró. Vuelve a iniciar sesión.',
+  INVALID_TRANSACTION: 'No se pudo completar la operación. Revisa los datos.',
+  MISSING_HEADER: 'Ocurrió un error al procesar tu solicitud.',
+  INVALID_CURRENCY: 'La moneda de la operación no coincide con tu cuenta.',
+  FORBIDDEN: 'No tienes permiso para esta acción.',
+};
+
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) return ERROR_MESSAGES[err.response.error] ?? err.response.message;
+  if (err instanceof Error) return err.message;
+  return 'Ocurrió un error inesperado. Inténtalo de nuevo.';
+}
